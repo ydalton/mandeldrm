@@ -1,0 +1,5 @@
+#+title: mandeldrm: draw the Mandelbrot set using libdrm
+
+This was a little pet project to learn about libdrm and the Linux kernel
+interface the DRM subsystem exposes to userspace. This is heavily based off of
+[[https://gist.github.com/uobikiemukot/c2be4d7515e977fd9e85][this GitHub gist]]. I've added some comments to help you follow along.
