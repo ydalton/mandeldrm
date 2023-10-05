@@ -1,8 +1,8 @@
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <signal.h>
 #include <sys/mman.h>
 #include <fcntl.h>
 
@@ -25,6 +25,8 @@ struct screen {
 	uint32_t handle, pitch;
 	uint64_t size;
 };
+int fd;
+struct screen *scr;
 
 static struct screen *get_screen(int fd)
 {
@@ -144,36 +146,6 @@ static int mb_iterate(double x, double y, unsigned int max_iter)
 	return iter;
 }
 
-static void draw(struct screen *scr)
-{
-	const double ratio = ((double) scr->width)/((double) scr->height);
-	double cre = -1.4;
-	double cim = 0;
-	double diam = 0.2;
-	double minr, mini, maxr, maxi;
-	double stepr, stepi;
-	uint32_t iter;
-	uint32_t i, j;
-
-	const double zoom = 0.05;
-
-	minr = cre - diam * zoom * ratio;
-        mini = cim - diam * zoom;
-        maxr = cre + diam * zoom * ratio;
-        maxi = cim + diam * zoom;
-
-        stepr = (maxr - minr) / scr->width;
-        stepi = (maxi - mini) / scr->height;
-
-	for(i = 0; i < scr->height; i++) {
-		for(j = 0; j < scr->width; j++) {
-			iter = TRUNCATE(mb_iterate(minr + j*stepr, mini + i*stepi, MAX_ITER));
-			*(scr->buf + j + (i*scr->width)) = MAKE_WHITE(iter);
-		}
-	}
-}
-
-
 static int destroy_fb(int fd, struct screen *scr)
 {
 	int ret;
@@ -198,13 +170,55 @@ static int destroy_fb(int fd, struct screen *scr)
 	return 0;
 }
 
+static void sig_int_handler(int signo)
+{
+	(void) destroy_fb(fd, scr);
+	drmDropMaster(fd);
+	free_screen(scr);
+	close(fd);
+	exit(0);
+}
+
+static void draw(struct screen *scr)
+{
+	const double ratio = ((double) scr->width)/((double) scr->height);
+	double cre = -1.4;
+	double cim = 0;
+	double diam = 0.2;
+	double minr, mini, maxr, maxi;
+	double stepr, stepi;
+	uint32_t iter;
+	uint32_t i, j;
+
+	/*
+	 * I'm protecting you because if you try to interrupt the draw sequence,
+	 * you will enter limbo land.
+	 */
+	signal(SIGINT, sig_int_handler);
+
+	const double zoom = 0.5;
+
+	minr = cre - diam * zoom * ratio;
+        mini = cim - diam * zoom;
+        maxr = cre + diam * zoom * ratio;
+        maxi = cim + diam * zoom;
+
+        stepr = (maxr - minr) / scr->width;
+        stepi = (maxi - mini) / scr->height;
+
+	for(i = 0; i < scr->height; i++) {
+		for(j = 0; j < scr->width; j++) {
+			iter = TRUNCATE(mb_iterate(minr + j*stepr, mini + i*stepi, MAX_ITER));
+			*(scr->buf + j + (i*scr->width)) = MAKE_WHITE(iter);
+		}
+	}
+}
+
+
 
 int main(void)
 {
-	int fd, ret;
-	uint64_t has_dumb;
-	struct screen *scr;
-
+	int ret;
 	/*
 	 * First, we need to open the DRM device node. Usually this should not
 	 * fail.
@@ -219,8 +233,8 @@ int main(void)
 	 * Check if the DRM device has the ability to have dumb framebuffers
 	 * attached to it. We need this for drawing stuff to the screen.
 	 */
-	drmGetCap(fd, DRM_CAP_DUMB_BUFFER, &has_dumb);
-	if(!has_dumb) {
+	drmGetCap(fd, DRM_CAP_DUMB_BUFFER, (uint64_t *) &ret);
+	if(!ret) {
 		fprintf(stderr, "dri device does not have dumb framebuffer capability");
 		return EXIT_FAILURE;
 	}
@@ -233,7 +247,7 @@ int main(void)
 	}
 
 	printf("Screen info:\n"
-	       "width: %d height: %d\n", scr->width, scr->height);
+	       "width: %d height: %d", scr->width, scr->height);
 
 	/*
 	 * In order to change the CRTC to scan out our framebuffer (next step),
