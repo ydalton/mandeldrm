@@ -1,6 +1,6 @@
-#CPPFLAGS=-I/usr/include/libdrm
+CPPFLAGS=$(shell pkg-config --cflags libdrm)
 CFLAGS=-Wall -Wextra -Wpedantic
-LDFLAGS=-ldrm
+LDFLAGS=$(shell pkg-config --libs libdrm)
 OBJ=\
     main.o
 

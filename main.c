@@ -12,6 +12,8 @@
 /* should probably not hardcode this... */
 #define DRI_PATH "/dev/dri/card0"
 
+#define UNUSED(x) (void)(x)
+
 #define MAX_ITER 500
 #define TRUNCATE(a) (255 * ((double) (a)/MAX_ITER))
 #define MAKE_WHITE(color) (color + (color << 8) + (color << 16))
@@ -172,6 +174,7 @@ static int destroy_fb(int fd, struct screen *scr)
 
 static void sig_int_handler(int signo)
 {
+	UNUSED(signo);
 	(void) destroy_fb(fd, scr);
 	drmDropMaster(fd);
 	free_screen(scr);
